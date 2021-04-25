@@ -134,7 +134,7 @@ def load_list(name):
         for i in item:
             # print(i, type(i), )
             temp2.append(i.replace('/content/drive/MyDrive/Colab Notebooks/CVDL/MedicalZooPytorch/datasets',
-                        '/Users/tarun/Projects/cvdl_env/MedicalZooPytorch/datasets'))
+                        '/content/drive/MyDrive/Colab Notebooks/active_learning_brats2017/datasets'))
         # print(tuple(temp2))
         temp.append(tuple(temp2))
     # return list_file

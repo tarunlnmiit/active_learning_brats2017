@@ -42,8 +42,8 @@ def main():
     models = ['VNET', 'UNET3D', 'VNET2']
     classifiers = {}
 
-    training_generator, val_generator, full_volume, affine = medical_loaders.generate_datasets(args,
-                                                                                               path='/Users/tarun/Projects/cvdl_env/MedicalZooPytorch/datasets')
+    training_generator, val_generator = medical_loaders.generate_datasets(args,
+                                                                                               path='/content/drive/MyDrive/Colab Notebooks/active_learning_brats2017/datasets')
     
     print(len(training_generator))
     X_train, y_train= next(iter(training_generator))
@@ -157,7 +157,7 @@ def main():
     train_end_cp = TrainEndCheckpoint(dirname='exp1')
     monitor = lambda net: all(net.history[-1, ('train_loss_best')])
     es = EarlyStopping('train_loss')
-    for model_name in models[1:2]:
+    for model_name in models:
         args.model = model_name
         args.classes = 2
         args.inChannels = 1
@@ -171,7 +171,7 @@ def main():
             print("Model transferred in GPU.....")
 
         classifier = NeuralNetClassifier(model,
-                                 max_epochs=2,
+                                 max_epochs=args.nEpochs,
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  train_split=None,
@@ -193,7 +193,7 @@ def main():
 
     committee = al.CustomCommittee(learner_list=list(learners.values()))
 
-    no_querry = 200
+    no_querry = args.nQuery
     random_result = {}
     KLD_result = {}
     JSD_result = {}
@@ -201,74 +201,96 @@ def main():
 
     print('Length of Pool before teaching: ', len(X_pool))
 
-    with open('results.csv', 'w', newline='') as file:
-        fieldnames = ['type', 'indexes', 'avg_precision_committee', "avg_list" ]
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        writer.writeheader()
-        for i in range(0, 4):
-            print(len(X_pool), "loop1")
-            for _ in range(int((len(X_pool)/no_querry))):
-                print(len(X_pool), 'loop2')
-                if i == 0:
-                    print('Length of Pool entropy: ', len(X_pool))
-                    indexes, _ = al.consensus_entropy_sampling_custom(committee,  X_pool[:], no_querry)
-                    X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_train, y_train, X_pool,
-                                                                    y_pool,  X_initial, y_initial, 
-                                                                    indexes, classifiers)
-                    avg_precision_committee, avg_list = average_precision(committee, X_val, y_val)
-                    entropy_result['type'] = 'entropy'
-                    entropy_result["indexes"]= indexes
-                    entropy_result["avg_precision_committee"] = avg_precision_committee
-                    entropy_result["avg_list"] = avg_list
-                    writer.writerow(entropy_result)
-                    X_pool = np.delete(X_pool, indexes, axis=0)
-                    y_pool = np.delete(y_pool, indexes, axis=0)
-                
+    with open('results/results-{}-{}.csv'.format(no_querry, args.nEpochs), 'w', newline='') as file:
+      fieldnames = ['type', 'indexes', 'avg_precision_committee', "avg_list" ]
+      writer = csv.DictWriter(file, fieldnames=fieldnames)
+      writer.writeheader()
+      
+      for _ in range(int((len(X_pool)/no_querry)) + 1):
+          if no_querry > len(X_pool):
+            no_querry = len(X_pool)
+          print('Length of Pool entropy: ', len(X_pool))
+          indexes, _ = al.consensus_entropy_sampling_custom(committee,  X_pool[:], no_querry)
+          X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_pool,
+                                                          y_pool,  X_initial, y_initial, 
+                                                          indexes, classifiers)
+          avg_precision_committee, avg_list = average_precision(committee, X_val, y_val)
+          entropy_result['type'] = 'entropy'
+          entropy_result["indexes"]= indexes
+          entropy_result["avg_precision_committee"] = avg_precision_committee
+          entropy_result["avg_list"] = avg_list
+          writer.writerow(entropy_result)
+          # X_pool = np.delete(X_pool, indexes, axis=0)
+          # y_pool = np.delete(y_pool, indexes, axis=0)
 
-                elif i == 1:
-                    print('Length of Pool KLD: ', len(X_pool))
-                    indexes, _ = al.KL_max_disagreement_sampling_custom(committee, X_pool[:], no_querry)
-                    X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_train, y_train, X_pool,
-                                                                    y_pool,  X_initial, y_initial, 
-                                                                    indexes, classifiers)
-                    avg_precision_committee, avg_list  = average_precision(committee, X_val, y_val)
-                    entropy_result['type'] = 'KLD'
-                    KLD_result["indexes"]= indexes
-                    KLD_result["avg_precision_committee"] = avg_precision_committee
-                    KLD_result["avg_list"] = avg_list
-                    writer.writerow(KLD_result)
-                    X_pool = np.delete(X_pool, indexes, axis=0)
-                    y_pool = np.delete(y_pool, indexes, axis=0)
-                
-                elif i == 2:
-                    print('Length of Pool JSD: ', len(X_pool))
-                    indexes, _ = al.JSD_max_disagreement_sampling(committee, X_pool[:], no_querry)
-                    X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_train, y_train, X_pool,
-                                                                    y_pool,  X_initial, y_initial, 
-                                                                    indexes, classifiers)
-                    avg_precision_committee, avg_list  = average_precision(committee, X_val, y_val)
-                    entropy_result['type'] = 'JSD'
-                    JSD_result["indexes"]= indexes
-                    JSD_result["avg_precision_committee"] = avg_precision_committee
-                    JSD_result["avg_list"] = avg_list
-                    writer.writerow(JSD_result)
-                    X_pool = np.delete(X_pool, indexes, axis=0)
-                    y_pool = np.delete(y_pool, indexes, axis=0)
-                
-                else:
-                    print('Length of Pool Random: ', len(X_pool))
-                    indexes = random.sample(range(X_pool.shape[0]), no_querry)
-                    X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_train, y_train, X_pool,
-                                                                    y_pool,  X_initial, y_initial, 
-                                                                    indexes, classifiers)
-                    avg_precision_committee, avg_list = average_precision(committee, X_val, y_val)
-                    entropy_result['type'] = 'random'
-                    random_result["indexes"]= indexes
-                    random_result["avg_precision_committee"] = avg_precision_committee
-                    random_result["avg_list"] = avg_list
-                    writer.writerow(random_result)
-                    X_pool = np.delete(X_pool, indexes, axis=0)
-                    y_pool = np.delete(y_pool, indexes, axis=0) 
+      X_initial = X_train[initial_idx]
+      y_initial = y_train[initial_idx]
+      X_pool = np.delete(X_train, initial_idx, axis=0)
+      y_pool = np.delete(y_train, initial_idx, axis=0)
+      no_querry = args.nQuery
+
+      for _ in range(int((len(X_pool) / no_querry)) + 1):
+          if no_querry > len(X_pool):
+            no_querry = len(X_pool)
+          print('Length of Pool KLD: ', len(X_pool))
+          indexes, _ = al.KL_max_disagreement_sampling_custom(committee, X_pool[:], no_querry)
+          X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_pool,
+                                                          y_pool,  X_initial, y_initial, 
+                                                          indexes, classifiers)
+          avg_precision_committee, avg_list  = average_precision(committee, X_val, y_val)
+          KLD_result['type'] = 'KLD'
+          KLD_result["indexes"]= indexes
+          KLD_result["avg_precision_committee"] = avg_precision_committee
+          KLD_result["avg_list"] = avg_list
+          writer.writerow(KLD_result)
+          # X_pool = np.delete(X_pool, indexes, axis=0)
+          # y_pool = np.delete(y_pool, indexes, axis=0)
+
+      X_initial = X_train[initial_idx]
+      y_initial = y_train[initial_idx]
+      X_pool = np.delete(X_train, initial_idx, axis=0)
+      y_pool = np.delete(y_train, initial_idx, axis=0)
+      no_querry = args.nQuery
+
+      for _ in range(int((len(X_pool) / no_querry)) + 1):
+          if no_querry > len(X_pool):
+            no_querry = len(X_pool)
+          print('Length of Pool JSD: ', len(X_pool))
+          indexes, _ = al.JSD_max_disagreement_sampling(committee, X_pool[:], no_querry)
+          X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_pool,
+                                                          y_pool,  X_initial, y_initial, 
+                                                          indexes, classifiers)
+          avg_precision_committee, avg_list  = average_precision(committee, X_val, y_val)
+          JSD_result['type'] = 'JSD'
+          JSD_result["indexes"]= indexes
+          JSD_result["avg_precision_committee"] = avg_precision_committee
+          JSD_result["avg_list"] = avg_list
+          writer.writerow(JSD_result)
+          # X_pool = np.delete(X_pool, indexes, axis=0)
+          # y_pool = np.delete(y_pool, indexes, axis=0)
+
+      X_initial = X_train[initial_idx]
+      y_initial = y_train[initial_idx]
+      X_pool = np.delete(X_train, initial_idx, axis=0)
+      y_pool = np.delete(y_train, initial_idx, axis=0)
+      no_querry = args.nQuery
+
+      for _ in range(int((len(X_pool) / no_querry)) + 1):
+          if no_querry > len(X_pool):
+            no_querry = len(X_pool)
+          print('Length of Pool Random: ', len(X_pool))
+          indexes = random.sample(range(X_pool.shape[0]), no_querry)
+          X_initial, y_initial, X_pool, y_pool, committee = teach_model(X_pool,
+                                                          y_pool,  X_initial, y_initial, 
+                                                          indexes, classifiers)
+          avg_precision_committee, avg_list = average_precision(committee, X_val, y_val)
+          random_result['type'] = 'random'
+          random_result["indexes"]= indexes
+          random_result["avg_precision_committee"] = avg_precision_committee
+          random_result["avg_list"] = avg_list
+          writer.writerow(random_result)
+          # X_pool = np.delete(X_pool, indexes, axis=0)
+          # y_pool = np.delete(y_pool, indexes, axis=0) 
 
     # indexes, samples  = al.JSD_max_disagreement_sampling(committee, X_pool[:], 20) 
     # print("JSD\n", indexes, samples.shape)
@@ -396,7 +418,7 @@ def average_precision(committee, X_pool, y_pool):
     return avg_precision_committee, avg_list
 
 
-def teach_model(X_train, y_train, X_pool, y_pool, X_initial, y_initial, n_instances,
+def teach_model(X_pool, y_pool, X_initial, y_initial, n_instances,
                 classifiers):
     """
     Retrains Committe with new samples.
@@ -423,27 +445,8 @@ def teach_model(X_train, y_train, X_pool, y_pool, X_initial, y_initial, n_instan
 
     committee = al.CustomCommittee(learner_list=list(learners.values()))
 
-    # learner_1 = ActiveLearner(
-    #     estimator=classifier1,
-    #     X_training=np.array(X_initial), y_training=np.array(y_initial),)
-
-
-
-    # learner_2 = ActiveLearner(
-    #     estimator=classifier1,
-    #     X_training=np.array(X_initial), y_training=np.array(y_initial),
-    # )
-
-    # learner_3 = ActiveLearner(
-    #     estimator=classifier1,
-    #     X_training=(X_initial), y_training=(y_initial),
-    # )
-
-    # committee = CustomCommittee(learner_list= [learner_2 ])
-
-
-    X_pool = np.delete(X_train, n_instances, axis=0)
-    y_pool = np.delete(y_train, n_instances, axis=0)
+    X_pool = np.delete(X_pool, n_instances, axis=0)
+    y_pool = np.delete(y_pool, n_instances, axis=0)
     return X_initial, y_initial, X_pool, y_pool, committee
 
 
@@ -453,6 +456,7 @@ def get_arguments():
     parser.add_argument('--dataset_name', type=str, default="brats2017")
     parser.add_argument('--dim', nargs="+", type=int, default=(64, 64, 64))
     parser.add_argument('--nEpochs', type=int, default=100)
+    parser.add_argument('--nQuery', type=int, default=200)
     parser.add_argument('--classes', type=int, default=4)
     parser.add_argument('--samples_train', type=int, default=1024)
     parser.add_argument('--samples_val', type=int, default=128)
@@ -467,7 +471,7 @@ def get_arguments():
     parser.add_argument('--split', default=0.8, type=float, help='Select percentage of training data(default: 0.8)')
     parser.add_argument('--lr', default=1e-2, type=float,
                         help='learning rate (default: 1e-3)')
-    parser.add_argument('--cuda', action='store_true', default=False)
+    parser.add_argument('--cuda', action='store_true', default=True)
     parser.add_argument('--loadData', default=False)
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')

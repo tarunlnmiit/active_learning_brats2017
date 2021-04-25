@@ -362,11 +362,11 @@ def KL_max_disagreement_sampling_custom(committee: BaseCommittee, X: modALinput,
         the instances from X chosen to be labelled.
     """
     disagreement = KL_max_disagreement_custom(committee, X, **disagreement_measure_kwargs)
-    print(disagreement.shape, "disagreement")
+    # print(disagreement.shape, "disagreement")
 
     if not random_tie_break:
         query_idx = multi_argmax(disagreement, n_instances=n_instances)
-        print(query_idx.shape, "query_idx")
+        # print(query_idx.shape, "query_idx")
     else:
         query_idx = shuffled_argmax(disagreement, n_instances=n_instances)
 

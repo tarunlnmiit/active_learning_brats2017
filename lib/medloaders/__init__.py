@@ -154,7 +154,7 @@ def generate_datasets(args, path='.././datasets'):
     val_generator = DataLoader(val_loader, **params)
 
     print("DATA SAMPLES HAVE BEEN GENERATED SUCCESSFULLY")
-    return training_generator, val_generator, val_loader.full_volume, val_loader.affine
+    return training_generator, val_generator#, val_loader.full_volume, val_loader.affine
 
 
 def select_full_volume_for_infer(args, path='.././datasets'):

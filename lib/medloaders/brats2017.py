@@ -47,11 +47,12 @@ class MICCAIBraTS2017(Dataset):
                 transforms=[augment3D.GaussianNoise(mean=0, std=0.01), augment3D.RandomFlip(),
                             augment3D.ElasticTransform()], p=0.5)
         # print(load)
-        # print(self.training_path, load, self.root)
+        # print(self.training_path, load, self.root, self.save_name)
         if load:
             ## load pre-generated data
-            list_IDsT1 = sorted(glob.glob(os.path.join(self.training_path, '*GG/*/*t1.nii.gz')))
-            self.affine = img_loader.load_affine_matrix(list_IDsT1[0])
+            # list_IDsT1 = sorted(glob.glob(os.path.join(self.training_path, '*GG/*/*t1.nii.gz')))
+            # print(list_IDsT1)
+            # self.affine = img_loader.load_affine_matrix(list_IDsT1[0])
             self.list = utils.load_list(self.save_name)
             # print(self.list)
             return
